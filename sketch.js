@@ -1,133 +1,103 @@
-// let img;
-// let tiles = [];
-
-// function preload() {
-//   img = loadImage('S.jpg');   // your historical building image
-// }
-
-// function setup() {
-//   img.resize(600, 0);         // scale image to 600px width, keep aspect ratio
-//   createCanvas(img.width, img.height);
-
-//   imageMode(CORNER);          // draw from top-left for our tiles
-
-//   makeTiles();                // build all the glass blocks
-//   noLoop();                   // draw once (remove this if you want it to re-randomize)
-// }
-
-// function makeTiles() {
-//   tiles = [];
-
-//   let minBlockSize = 25;
-//   let maxBlockSize = 80;
-//   let wander = 80;            // how far reflections can “pull” from
-
-//   let x = 0;
-//   while (x < width) {
-//     let w = random(minBlockSize, maxBlockSize);
-//     if (x + w > width) w = width - x;  // clamp at right edge
-
-//     let y = 0;
-//     while (y < height) {
-//       let h = random(minBlockSize, maxBlockSize);
-//       if (y + h > height) h = height - y;  // clamp at bottom edge
-
-//       // ----- LENS-STRETCH SOURCE SIZE -----
-//       // source area can be 70–140% of tile size
-//       let srcW = w * random(0.7, 1.4);
-//       let srcH = h * random(0.7, 1.4);
-
-//       // keep valid, at least a few pixels
-//       srcW = constrain(srcW, 5, img.width);
-//       srcH = constrain(srcH, 5, img.height);
-
-//       // choose a source position, biased near tile position for local distortion
-//       let sx = constrain(x + random(-wander, wander), 0, img.width - srcW);
-//       let sy = constrain(y + random(-wander, wander), 0, img.height - srcH);
-
-//       // grab that (possibly larger/smaller) piece
-//       let piece = img.get(sx, sy, srcW, srcH);
-
-//       // ----- RANDOM BLUR ON SOME TILES -----
-//       if (random() < 0.35) {        // ~45% tiles blurred
-//         let blurAmt = random(0.2, 2.0);
-//         piece.filter(BLUR, blurAmt);
-//       }
-
-//       // store with the ORIGINAL tile position & size
-//       tiles.push({ x: x, y: y, w: w, h: h, piece: piece });
-
-//       y += h;
-//     }
-
-//     x += w;
-//   }
-// }
-
-// function draw() {
-//   background(220);
-
-//   for (let t of tiles) {
-//     // draw the distorted patch, stretched/compressed into the tile
-//     image(t.piece, t.x, t.y, t.w, t.h);
-
-//     // draw the glass frame
-//     noFill();
-//     stroke(0, 80);
-//     rect(t.x, t.y, t.w, t.h);
-//   }
-// }
-
 let img;
+let srcImg;       // abstracted source made from repeated slices
 let tiles = [];
 
 function preload() {
-  img = loadImage('S.jpg');
+  img = loadImage('E.jpg');   // Eiffel image
 }
 
 function setup() {
-  img.resize(600, 0);
+  // keep overall canvas size
+  img.resize(600, 0);                 // width = 600, keep aspect ratio
   createCanvas(img.width, img.height);
-
   imageMode(CORNER);
-  makeTiles();
+
+  makeSourceImage();                  // 1) slice + repeat to abstract image
+  makeTiles();                        // 2) build distorted glass blocks
+  // noLoop();                        // <-- remove this so mouse interaction works
+}
+
+// build an abstract source image from 3–4 vertical slices, copied & rearranged
+function makeSourceImage() {
+  srcImg = createGraphics(img.width, img.height);
+
+  let parts = 4;                      // divide into 3–4 pieces
+  let partW = img.width / parts;
+  let slices = [];
+
+  // cut vertical slices from the original Eiffel image
+  for (let i = 0; i < parts; i++) {
+    let sx = i * partW;
+    let slice = img.get(sx, 0, partW, img.height);
+    slices.push(slice);
+  }
+
+  // fill the whole width with randomly chosen slices,
+  // scaled a bit so they don't line up perfectly
+  let x = 0;
+  while (x < srcImg.width) {
+    let s = random(slices);
+    let targetW = random(partW * 0.5, partW * 1.2);   // vary width
+    if (x + targetW > srcImg.width) targetW = srcImg.width - x;
+
+    srcImg.image(s, x, 0, targetW, srcImg.height);
+    x += targetW;
+  }
 }
 
 function makeTiles() {
   tiles = [];
 
-  let minBlockSize = 25;
-  let maxBlockSize = 80;
-  let wander = 80;
+  // narrow vertical panels, like reference
+  let minBlockW = 10;
+  let maxBlockW = 40;
+  let minBlockH = 40;
+  let maxBlockH = 130;
+
+  let wanderX = 25;      // small sideways shift
+  let wanderY = 100;      // vertical wobble
 
   let x = 0;
   while (x < width) {
-    let w = random(minBlockSize, maxBlockSize);
-    if (x + w > width) w = width - x;
+    let w = random(minBlockW, maxBlockW);
+    if (x + w > width) w = width - x;   // clamp at right edge
+
+    // per-column wave for big curves
+    let colNorm = x / width;
+    let waveAmp = random(20, 50);
+    let waveFreq = random(0.8, 1.8);
+    let wavePhase = random(TWO_PI);
 
     let y = 0;
     while (y < height) {
-      let h = random(minBlockSize, maxBlockSize);
+      let h = random(minBlockH, maxBlockH);
       if (y + h > height) h = height - y;
 
-      // lens stretch
-      let srcW = w * random(0.7, 1.4);
-      let srcH = h * random(0.7, 1.4);
-      srcW = constrain(srcW, 5, img.width);
-      srcH = constrain(srcH, 5, img.height);
+      // source size → stretch / compress
+      let srcW = w * random(0.7, 1.3);
+      let srcH = h * random(0.9, 1.8);
 
-      let sx = constrain(x + random(-wander, wander), 0, img.width - srcW);
-      let sy = constrain(y + random(-wander, wander), 0, img.height - srcH);
+      srcW = constrain(srcW, 5, srcImg.width);
+      srcH = constrain(srcH, 5, srcImg.height);
 
-      let piece = img.get(sx, sy, srcW, srcH);
+      // base source position near this column
+      let sx = constrain(x + random(-wanderX, wanderX),
+                         0, srcImg.width - srcW);
 
-      // random blur
-      if (random() < 0.45) {
-        let blurAmt = random(0.2, 2.0);
+      let baseSy = y + random(-wanderY, wanderY);
+      let wave = sin(colNorm * waveFreq * TWO_PI + wavePhase) * waveAmp;
+      let sy = constrain(baseSy + wave, 0, srcImg.height - srcH);
+
+      // get piece from the abstracted source image (not original!)
+      let piece = srcImg.get(sx, sy, srcW, srcH);
+
+      // random blur for glass softness
+      if (random() < 0.55) {
+        let blurAmt = random(0.6, 2.5);
         piece.filter(BLUR, blurAmt);
       }
 
-      tiles.push({ x: x, y: y, w: w, h: h, piece: piece });
+      tiles.push({ x, y, w, h, piece });
       y += h;
     }
     x += w;
@@ -135,26 +105,26 @@ function makeTiles() {
 }
 
 function draw() {
-  background(220);
+  
 
   // mouse left = only distorted
   // mouse right = only clean original
-  let amt = constrain(1 - mouseX / width+ 0.1, 0, 1);
+  let amt = constrain(1 - mouseX / width + 0.1, 0, 1);
 
-  // ① first draw distorted, fading OUT as mouse→right
+  // ① draw distorted layer, fading OUT as mouse → right
   push();
   tint(255, 255 * amt);
   for (let t of tiles) {
     image(t.piece, t.x, t.y, t.w, t.h);
 
-    // border also fades out | no black line on original!
-    stroke(255, 50 * amt);
+    // borders fade together with tiles
     noFill();
+    stroke(0, 0 * amt);
     rect(t.x, t.y, t.w, t.h);
   }
   pop();
 
-  // ② then draw original image fading IN
+  // ② draw original Eiffel image, fading IN
   push();
   tint(255, 255 * (1 - amt));
   image(img, 0, 0);
